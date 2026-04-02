@@ -2,6 +2,8 @@
 
 A PyTorch-based neural image compression pipeline using the CompressAI MeanScaleHyperprior architecture. Supports end-to-end training, compression to a cleverly-named binary format (`.ramiro`), decompression back to PNG, and evaluation against JPEG baselines with rate-distortion curve generation.
 
+Default settings are on the safer side as my computer runs an RTX 2060 with 16GB RAM.
+
 ## Usage
 
 ### Training
