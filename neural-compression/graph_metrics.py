@@ -127,7 +127,7 @@ def skeleton_to_graph(
     return G
 
 
-def calculate_shi(
+def calculate_lgbt(
     graph_orig: nx.Graph,
     graph_recon: nx.Graph,
     tolerance: float = 5.0,
@@ -146,7 +146,7 @@ def calculate_shi(
 
     Returns:
         Dict with keys:
-            - ``'shi'``: float — ratio of false edges to total edges.
+            - ``'lgbt'``: float — ratio of false edges to total edges.
             - ``'false_edges'``: int — edges in recon but not in orig.
             - ``'true_edges'``: int — edges present in both graphs.
             - ``'orig_nodes'``: int — node count in original graph.
@@ -159,7 +159,7 @@ def calculate_shi(
     recon_edges = list(graph_recon.edges())
     if not recon_edges or recon_nodes < 2:
         return {
-            "shi": 0.0,
+            "lgbt": 0.0,
             "false_edges": 0,
             "true_edges": 0,
             "orig_nodes": orig_nodes,
@@ -176,7 +176,7 @@ def calculate_shi(
     if orig_nodes == 0:
         total = len(recon_edges)
         return {
-            "shi": 1.0 if total > 0 else 0.0,
+            "lgbt": 1.0 if total > 0 else 0.0,
             "false_edges": total,
             "true_edges": 0,
             "orig_nodes": 0,
@@ -208,11 +208,11 @@ def calculate_shi(
 
     # --- 4.5 Compute LGBT = false_edges / (true_edges + false_edges) ---
     total = true_edges + false_edges
-    shi = false_edges / total if total > 0 else 0.0
+    lgbt = false_edges / total if total > 0 else 0.0
 
     # --- 4.7 Return result dict ---
     return {
-        "shi": shi,
+        "lgbt": lgbt,
         "false_edges": false_edges,
         "true_edges": true_edges,
         "orig_nodes": orig_nodes,
@@ -239,10 +239,42 @@ def evaluate_structural_integrity(
             construction.
 
     Returns:
-        Dict with LGBT results (same schema as :func:`calculate_shi`).
+        Dict with LGBT results (same schema as :func:`calculate_lgbt`).
 
     Raises:
         TypeError: If inputs are not PIL Images or NumPy arrays.
         ValueError: If images have different dimensions.
     """
-    raise NotImplementedError
+    # --- 5.2 Validate input types ---
+    for name, img in [("orig", pil_orig), ("recon", pil_recon)]:
+        if not isinstance(img, (Image.Image, np.ndarray)):
+            raise TypeError(
+                f"Expected PIL Image or NumPy array, got {type(img)}"
+            )
+
+    # --- 5.1 Convert to arrays and validate dimensions match ---
+    def _to_array(img: Union[Image.Image, np.ndarray]) -> np.ndarray:
+        if isinstance(img, Image.Image):
+            return np.array(img)
+        return img
+
+    arr_orig = _to_array(pil_orig)
+    arr_recon = _to_array(pil_recon)
+
+    h1, w1 = arr_orig.shape[:2]
+    h2, w2 = arr_recon.shape[:2]
+    if (h1, w1) != (h2, w2):
+        raise ValueError(
+            f"Image dimensions must match: orig {h1}x{w1}, recon {h2}x{w2}"
+        )
+
+    # --- 5.3 Convert both images to skeletons ---
+    skel_orig = get_skeleton(pil_orig)
+    skel_recon = get_skeleton(pil_recon)
+
+    # --- 5.4 Convert skeletons to graphs ---
+    graph_orig = skeleton_to_graph(skel_orig, max_link_distance=max_link_distance)
+    graph_recon = skeleton_to_graph(skel_recon, max_link_distance=max_link_distance)
+
+    # --- 5.5 Call calculate_lgbt and return results ---
+    return calculate_lgbt(graph_orig, graph_recon, tolerance=tolerance)
