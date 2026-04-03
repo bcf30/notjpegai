@@ -291,4 +291,20 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    
+    # Simple mode: python evaluate.py <original> <reconstructed>
+    if len(sys.argv) == 3 and not sys.argv[1].startswith('-'):
+        orig = Image.open(sys.argv[1])
+        recon = Image.open(sys.argv[2])
+        
+        orig_np = np.array(orig).astype(np.float32) / 255.0
+        recon_np = np.array(recon).astype(np.float32) / 255.0
+        
+        psnr = Metrics.compute_psnr(orig_np, recon_np)
+        ms_ssim = Metrics.compute_ms_ssim(orig_np, recon_np)
+        
+        print(f"PSNR: {psnr:.2f} dB")
+        print(f"MS-SSIM: {ms_ssim:.4f}")
+    else:
+        main()

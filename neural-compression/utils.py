@@ -38,6 +38,8 @@ class RamiroHeader:
     original_width: int
     padded_height: int
     padded_width: int
+    latent_height: int
+    latent_width: int
     strings: List[List[bytes]]  # CompressAI batch format: [[stream_0, stream_1, ...]]
 
 
@@ -46,6 +48,8 @@ def pack_bitstream(
     orig_w: int,
     pad_h: int,
     pad_w: int,
+    latent_h: int,
+    latent_w: int,
     strings: List[List[bytes]],
 ) -> bytes:
     """Serialize compressed output to .Ramiro binary format.
@@ -53,23 +57,26 @@ def pack_bitstream(
     Args:
         orig_h, orig_w: Original image dimensions before padding.
         pad_h, pad_w: Padded image dimensions (multiples of 16).
+        latent_h, latent_w: Latent space dimensions for decompression.
         strings: CompressAI output, shape [[bytes_y, bytes_z]] (batch=1).
 
     Returns:
-        Raw bytes: 24-byte header + length-prefixed byte strings.
+        Raw bytes: 32-byte header + length-prefixed byte strings.
     """
     # strings is [[y_bytes], [z_bytes]] - flatten to get all streams
     inner = []
     for stream_list in strings:
         inner.extend(stream_list)  # Add each stream's bytes
 
-    # Build header manually: 8-byte magic + 5 uint32be integers = 28 bytes
+    # Build header manually: 8-byte magic + 7 uint32be integers = 36 bytes
     header = (
         b".Ramiro\x00"
         + struct.pack(">I", orig_h)
         + struct.pack(">I", orig_w)
         + struct.pack(">I", pad_h)
         + struct.pack(">I", pad_w)
+        + struct.pack(">I", latent_h)
+        + struct.pack(">I", latent_w)
         + struct.pack(">I", len(inner))
     )
 
@@ -91,10 +98,10 @@ def unpack_bitstream(data: bytes) -> RamiroHeader:
     Raises:
         ValueError: If magic number doesn't match or file is truncated.
     """
-    if len(data) < 28:
+    if len(data) < 36:
         raise ValueError(
             f"Invalid .Ramiro file: file too short for header "
-            f"(expected >= 28 bytes)"
+            f"(expected >= 36 bytes)"
         )
 
     magic = data[:8]
@@ -104,11 +111,11 @@ def unpack_bitstream(data: bytes) -> RamiroHeader:
             f"(expected b'.Ramiro\\x00', got {magic!r})"
         )
 
-    orig_h, orig_w, pad_h, pad_w, num_streams = struct.unpack(
-        ">IIIII", data[8:28]
+    orig_h, orig_w, pad_h, pad_w, latent_h, latent_w, num_streams = struct.unpack(
+        ">IIIIIII", data[8:36]
     )
 
-    offset = 28
+    offset = 36
     inner: List[bytes] = []
 
     for _ in range(num_streams):
@@ -130,6 +137,8 @@ def unpack_bitstream(data: bytes) -> RamiroHeader:
         original_width=orig_w,
         padded_height=pad_h,
         padded_width=pad_w,
+        latent_height=latent_h,
+        latent_width=latent_w,
         strings=[[inner[0]], [inner[1]]] if len(inner) >= 2 else [[b''], [b'']],
     )
 

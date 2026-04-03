@@ -1,10 +1,9 @@
-"""Compressor CLI — compress a single image to .Ramiro binary format.
+"""Compressor — compress a single image to .Ramiro binary format.
 
 Usage:
-    python compress.py -i input.png -o output.ramiro -c checkpoint.pth
+    python compress.py input.png output.ramiro checkpoint.pth
 """
 
-import argparse
 import logging
 import os
 import sys
@@ -27,62 +26,50 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Compress an image to .Ramiro format")
-    parser.add_argument("-i", required=True, help="Input image path")
-    parser.add_argument("-o", required=True, help="Output .ramiro file path")
-    parser.add_argument("-c", required=True, help="Model checkpoint path")
-    args = parser.parse_args()
+def compress(input_path: str, output_path: str, checkpoint_path: str) -> None:
+    """Compress an image to .Ramiro format."""
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Input image not found: {input_path}")
 
-    try:
-        # Validate input
-        if not os.path.exists(args.i):
-            raise FileNotFoundError(f"Input image not found: {args.i}")
+    logger.info(f"Loading input image: {input_path}")
+    config = TrainConfig()
 
-        logger.info(f"Loading input image: {args.i}")
-        config = TrainConfig()
+    img = Image.open(input_path).convert("RGB")
+    tensor = ToTensor()(img).unsqueeze(0)
+    logger.info(f"Image loaded, dimensions: {img.size[0]}x{img.size[1]}")
 
-        # Load image → RGB → [1, 3, H, W] float32 in [0, 1]
-        img = Image.open(args.i).convert("RGB")
-        tensor = ToTensor()(img).unsqueeze(0)
-        logger.info(f"Image loaded, dimensions: {img.size[0]}x{img.size[1]}")
+    logger.info(f"Loading checkpoint: {checkpoint_path}")
+    codec = NeuralCodec(checkpoint_path=checkpoint_path, N=config.N, M=config.M)
+    codec.model.update(force=True)
+    codec.model.eval()
 
-        # Load model
-        logger.info(f"Loading checkpoint: {args.c}")
-        codec = NeuralCodec(checkpoint_path=args.c, N=config.N, M=config.M)
-        codec.model.update(force=True)
-        codec.model.eval()
-        logger.info("Model loaded and ready for compression")
+    with torch.no_grad():
+        pad_result = codec.pad_image(tensor, config.pad_factor)
+        padded = pad_result.tensor
+        orig_h = pad_result.original_height
+        orig_w = pad_result.original_width
+        pad_h, pad_w = padded.shape[2], padded.shape[3]
 
-        with torch.no_grad():
-            pad_result = codec.pad_image(tensor, config.pad_factor)
-            padded = pad_result.tensor
-            orig_h = pad_result.original_height
-            orig_w = pad_result.original_width
-            pad_h, pad_w = padded.shape[2], padded.shape[3]
+        logger.info(f"Compressing ({orig_h}x{orig_w}) -> padded ({pad_h}x{pad_w})...")
+        out = codec.model.compress(padded)
+        latent_h, latent_w = out["shape"]
 
-            logger.info(f"Compressing ({orig_h}x{orig_w}) -> padded ({pad_h}x{pad_w})...")
-            out = codec.model.compress(padded)
-            logger.info("Compression complete")
+    data = pack_bitstream(orig_h, orig_w, pad_h, pad_w, latent_h, latent_w, out["strings"])
+    with open(output_path, "wb") as f:
+        f.write(data)
 
-        # Serialize and write
-        data = pack_bitstream(orig_h, orig_w, pad_h, pad_w, out["strings"])
-        with open(args.o, "wb") as f:
-            f.write(data)
-
-        # Report
-        file_size = len(data)
-        bpp = Metrics.compute_bpp(file_size, orig_h, orig_w)
-        logger.info(f"Output written to: {args.o}")
-        logger.info(f"Original dimensions: {orig_h}x{orig_w}")
-        logger.info(f"Compressed file size: {file_size} bytes ({file_size / 1024:.2f} KB)")
-        logger.info(f"BPP: {bpp:.4f}")
-
-    except (FileNotFoundError, ValueError, RuntimeError) as exc:
-        logger.error(f"Compression failed: {exc}")
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
+    file_size = len(data)
+    bpp = Metrics.compute_bpp(file_size, orig_h, orig_w)
+    logger.info(f"Output: {output_path}")
+    logger.info(f"Size: {file_size} bytes ({file_size / 1024:.2f} KB), BPP: {bpp:.4f}")
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 4:
+        print("Usage: python compress.py <input_image> <output.ramiro> <checkpoint.pth>")
+        sys.exit(1)
+    try:
+        compress(sys.argv[1], sys.argv[2], sys.argv[3])
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        logger.error(f"Compression failed: {exc}")
+        sys.exit(1)

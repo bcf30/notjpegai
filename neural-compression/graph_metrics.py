@@ -278,3 +278,22 @@ def evaluate_structural_integrity(
 
     # --- 5.5 Call calculate_lgbt and return results ---
     return calculate_lgbt(graph_orig, graph_recon, tolerance=tolerance)
+
+
+if __name__ == "__main__":
+    import argparse
+    
+    parser = argparse.ArgumentParser(description="Evaluate structural integrity using LGBT metric")
+    parser.add_argument("original", help="Path to original image")
+    parser.add_argument("reconstructed", help="Path to reconstructed image")
+    args = parser.parse_args()
+    
+    orig = Image.open(args.original)
+    recon = Image.open(args.reconstructed)
+    
+    print(f"Original: {orig.size}, Reconstructed: {recon.size}")
+    results = evaluate_structural_integrity(orig, recon)
+    
+    print(f"\nLGBT: {results['lgbt']:.4f}")
+    print(f"False edges: {results['false_edges']}")
+    print(f"True edges: {results['true_edges']}")

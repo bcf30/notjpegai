@@ -1,10 +1,9 @@
-"""Decompressor CLI — decompress a .Ramiro file back to PNG.
+"""Decompressor — decompress a .Ramiro file back to PNG.
 
 Usage:
-    python decompress.py -i input.ramiro -o output.png -c checkpoint.pth
+    python decompress.py input.ramiro output.png checkpoint.pth
 """
 
-import argparse
 import logging
 import os
 import sys
@@ -27,68 +26,46 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Decompress a .Ramiro file to PNG")
-    parser.add_argument("-i", required=True, help="Input .ramiro file path")
-    parser.add_argument("-o", required=True, help="Output .png file path")
-    parser.add_argument("-c", required=True, help="Model checkpoint path")
-    args = parser.parse_args()
+def decompress(input_path: str, output_path: str, checkpoint_path: str) -> None:
+    """Decompress a .Ramiro file to PNG."""
+    if not os.path.exists(input_path):
+        raise FileNotFoundError(f"Input .Ramiro file not found: {input_path}")
 
-    try:
-        # Validate input
-        if not os.path.exists(args.i):
-            raise FileNotFoundError(f"Input .Ramiro file not found: {args.i}")
+    logger.info(f"Reading .Ramiro file: {input_path}")
+    config = TrainConfig()
 
-        logger.info(f"Reading .Ramiro file: {args.i}")
-        config = TrainConfig()
+    with open(input_path, "rb") as f:
+        data = f.read()
 
-        # Read and parse .Ramiro file
-        with open(args.i, "rb") as f:
-            data = f.read()
+    header = unpack_bitstream(data)
+    logger.info(f"Header: original {header.original_height}x{header.original_width}, "
+                f"padded {header.padded_height}x{header.padded_width}")
 
-        header = unpack_bitstream(data)
-        logger.info(f".Ramiro header parsed: original {header.original_height}x{header.original_width}, "
-                    f"padded {header.padded_height}x{header.padded_width}")
+    logger.info(f"Loading checkpoint: {checkpoint_path}")
+    codec = NeuralCodec(checkpoint_path=checkpoint_path, N=config.N, M=config.M)
+    codec.model.update(force=True)
+    codec.model.eval()
 
-        # Load model
-        logger.info(f"Loading checkpoint: {args.c}")
-        codec = NeuralCodec(checkpoint_path=args.c, N=config.N, M=config.M)
-        codec.model.update(force=True)
-        codec.model.eval()
-        logger.info("Model loaded and ready for decompression")
+    with torch.no_grad():
+        latent_shape = (header.latent_height, header.latent_width)
+        logger.info(f"Decompressing latent shape: {latent_shape}...")
+        out = codec.model.decompress(header.strings, latent_shape)
 
-        with torch.no_grad():
-            # CompressAI decompress expects 4D latent-space shape:
-            # (batch=1, channels=M, latent_H, latent_W)
-            latent_shape = (
-                1,
-                config.M,
-                header.padded_height // config.pad_factor,
-                header.padded_width // config.pad_factor,
-            )
-            logger.info(f"Decompressing latent shape: {latent_shape}...")
-            out = codec.model.decompress(header.strings, latent_shape)
-            logger.info("Decompression complete")
+        x_hat = out["x_hat"].clamp(0, 1)
+        x_hat = codec.unpad_image(x_hat, header.original_height, header.original_width)
 
-            x_hat = out["x_hat"].clamp(0, 1)
-            x_hat = codec.unpad_image(
-                x_hat, header.original_height, header.original_width,
-            )
+    img_array = (x_hat[0].cpu().permute(1, 2, 0).numpy() * 255).astype(np.uint8)
+    Image.fromarray(img_array).save(output_path)
 
-        # Convert to PIL and save
-        img_array = (
-            x_hat[0].cpu().permute(1, 2, 0).numpy() * 255
-        ).astype(np.uint8)
-        Image.fromarray(img_array).save(args.o)
-
-        logger.info(f"Output written to: {args.o}")
-        logger.info(f"Output dimensions: {header.original_height}x{header.original_width}")
-
-    except (FileNotFoundError, ValueError, RuntimeError) as exc:
-        logger.error(f"Decompression failed: {exc}")
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(1)
+    logger.info(f"Output: {output_path} ({header.original_height}x{header.original_width})")
 
 
 if __name__ == "__main__":
-    main()
+    if len(sys.argv) != 4:
+        print("Usage: python decompress.py <input.ramiro> <output.png> <checkpoint.pth>")
+        sys.exit(1)
+    try:
+        decompress(sys.argv[1], sys.argv[2], sys.argv[3])
+    except (FileNotFoundError, ValueError, RuntimeError) as exc:
+        logger.error(f"Decompression failed: {exc}")
+        sys.exit(1)

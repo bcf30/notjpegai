@@ -30,7 +30,8 @@ class TrainConfig:
     max_epochs: int = 100
 
     # Spatial dimension alignment factor for encoder/decoder
-    pad_factor: int = 16
+    # MeanScaleHyperprior has 4 downsampling layers (2^4=16) plus hyperprior needs factor of 2
+    pad_factor: int = 128
 
     # Maximum gradient norm for main optimizer clipping
     grad_clip_max_norm: float = 1.0

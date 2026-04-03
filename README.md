@@ -6,76 +6,21 @@ Default settings are on the safer side as my computer runs an RTX 2060 with 16GB
 
 ## Usage
 
-### Training
+train.py: train a new model
+resume_training.py: train an existing model
+compress.py: compress an image to the `.ramiro` format
+decompress.py: decompress a `.ramiro` file to a PNG
+evaluate.py: PSNR and MS-SSIM evaluation on image accuracy
+graph_metrics.py: graph-topology based evaluation for image accuracy with focus on ringing artifacts. this is the "Learned Geometric Boundary Topology" tech
 
-Train a neural compression model on a dataset of images:
+# Compress / Decompress — positional args, no flags
+python compress.py input.jpg output.ramiro checkpoint.pth
+python decompress.py input.ramiro output.png checkpoint.pth
 
-```
-python train.py \
-  --dataset /path/to/train \
-  --val_dataset /path/to/val \
-  --epochs 100 \
-  --output_dir checkpoints
-```
+# Evaluate — just two images
+python evaluate.py original.jpg reconstructed.png
+python graph_metrics.py original.jpg reconstructed.png
 
-Optional arguments:
-
-- `--lambda` — Rate-distortion trade-off weight (default: 0.01)
-- `--batch_size` — Batch size for training (default: 8)
-
-### Compression
-
-Compress a single image to the `.ramiro` binary format:
-
-```
-python compress.py \
-  -i input.png \
-  -o output.ramiro \
-  -c checkpoints/best_model.pth
-```
-
-### Decompression
-
-Decompress a `.ramiro` file back to a PNG image:
-
-```
-python decompress.py \
-  -i output.ramiro \
-  -o reconstructed.png \
-  -c checkpoints/best_model.pth
-```
-
-### Evaluation
-
-Benchmark a trained checkpoint against JPEG at multiple quality levels:
-
-```
-python evaluate.py \
-  -i /path/to/test \
-  -c checkpoints/best_model.pth \
-  -rd rd_curve.png \
-  -csv results.csv
-```
-
-This produces a rate-distortion plot comparing the neural codec (single data point) against JPEG baselines, along with a CSV of per-codec metrics.
-
-### Structural Evaluation
-
-Evaluate structural distortion using the Learned Geometric Boundary Topology (LGBT) metric, which measures false edges introduced by compression:
-
-```
-python -c "
-from neural_compression.graph_metrics import evaluate_structural_integrity
-from PIL import Image
-
-orig = Image.open('original.png')
-recon = Image.open('reconstructed.png')
-
-result = evaluate_structural_integrity(orig, recon)
-print(f'LGBT: {result[\"lgbt\"]:.4f}')
-print(f'False edges: {result[\"false_edges\"]}')
-print(f'True edges: {result[\"true_edges\"]}')
-"
-```
-
-LGBT ranges from 0.0 (perfect structural preservation) to 1.0 (all edges are false). Lower values indicate the compression did not introduce spurious structural artifacts.
+# Train / Resume — just edit the top of the file and run
+python train.py
+python resume_training.py
