@@ -1,0 +1,171 @@
+"""Serialization and metrics utilities for the Neural Image Compression Pipeline.
+
+Contains:
+    - .Ramiro binary format serialization (pack/unpack)
+    - Image quality metrics (PSNR, MS-SSIM, BPP)
+"""
+
+import struct
+from dataclasses import dataclass
+from typing import List, Tuple
+
+import numpy as np
+from skimage.metrics import peak_signal_noise_ratio, structural_similarity
+
+
+# ============================================================================
+# .Ramiro Binary Format
+# ============================================================================
+
+class .RamiroFormat:
+    """Constants for the .Ramiro binary file format.
+
+    Layout: 24-byte header + length-prefixed byte streams.
+    All integers are big-endian unsigned 32-bit.
+    """
+
+    MAGIC: bytes = b".Ramiro\x00"
+    HEADER_STRUCT: str = ">4sIIIII"  # magic + orig_h + orig_w + pad_h + pad_w + num_streams
+    HEADER_SIZE: int = 24
+    STREAM_LENGTH_STRUCT: str = ">I"
+    STREAM_LENGTH_SIZE: int = 4
+
+
+@dataclass(frozen=True)
+class .RamiroHeader:
+    """Parsed .Ramiro file header — like a C# record for the deserialized header."""
+    original_height: int
+    original_width: int
+    padded_height: int
+    padded_width: int
+    strings: List[List[bytes]]  # CompressAI batch format: [[stream_0, stream_1, ...]]
+
+
+def pack_bitstream(
+    orig_h: int,
+    orig_w: int,
+    pad_h: int,
+    pad_w: int,
+    strings: List[List[bytes]],
+) -> bytes:
+    """Serialize compressed output to .Ramiro binary format.
+
+    Args:
+        orig_h, orig_w: Original image dimensions before padding.
+        pad_h, pad_w: Padded image dimensions (multiples of 16).
+        strings: CompressAI output, shape [[bytes_y, bytes_z]] (batch=1).
+
+    Returns:
+        Raw bytes: 24-byte header + length-prefixed byte strings.
+    """
+    inner = strings[0]
+
+    header = struct.pack(
+        .RamiroFormat.HEADER_STRUCT,
+        .RamiroFormat.MAGIC, orig_h, orig_w, pad_h, pad_w, len(inner),
+    )
+
+    # Build payload: [header, len0, data0, len1, data1, ...]
+    parts = [header]
+    for stream in inner:
+        parts.append(struct.pack(.RamiroFormat.STREAM_LENGTH_STRUCT, len(stream)))
+        parts.append(stream)
+
+    return b"".join(parts)
+
+
+def unpack_bitstream(data: bytes) -> .RamiroHeader:
+    """Deserialize .Ramiro binary format back to components.
+
+    Returns:
+        .RamiroHeader with original dims, padded dims, and CompressAI-format strings.
+
+    Raises:
+        ValueError: If magic number doesn't match or file is truncated.
+    """
+    if len(data) < .RamiroFormat.HEADER_SIZE:
+        raise ValueError(
+            f"Invalid .Ramiro file: file too short for header "
+            f"(expected >= {.RamiroFormat.HEADER_SIZE} bytes)"
+        )
+
+    magic, orig_h, orig_w, pad_h, pad_w, num_streams = struct.unpack(
+        .RamiroFormat.HEADER_STRUCT, data[:.RamiroFormat.HEADER_SIZE]
+    )
+
+    if magic != .RamiroFormat.MAGIC:
+        raise ValueError(
+            f"Invalid .Ramiro file: magic number mismatch "
+            f"(expected {.RamiroFormat.MAGIC!r}, got {magic!r})"
+        )
+
+    offset = .RamiroFormat.HEADER_SIZE
+    inner: List[bytes] = []
+
+    for _ in range(num_streams):
+        if offset + .RamiroFormat.STREAM_LENGTH_SIZE > len(data):
+            raise ValueError("Invalid .Ramiro file: unexpected end of stream data")
+
+        (length,) = struct.unpack(
+            .RamiroFormat.STREAM_LENGTH_STRUCT,
+            data[offset : offset + .RamiroFormat.STREAM_LENGTH_SIZE],
+        )
+        offset += .RamiroFormat.STREAM_LENGTH_SIZE
+
+        if offset + length > len(data):
+            raise ValueError("Invalid .Ramiro file: unexpected end of stream data")
+
+        inner.append(data[offset : offset + length])
+        offset += length
+
+    return .RamiroHeader(
+        original_height=orig_h,
+        original_width=orig_w,
+        padded_height=pad_h,
+        padded_width=pad_w,
+        strings=[inner],
+    )
+
+
+# ============================================================================
+# Image Quality Metrics
+# ============================================================================
+
+class Metrics:
+    """Static helper methods for image quality measurement.
+
+    All methods expect float32 HxWx3 numpy arrays in [0, 1].
+    """
+
+    @staticmethod
+    def compute_psnr(original: np.ndarray, reconstructed: np.ndarray) -> float:
+        """PSNR via skimage with data_range=1.0."""
+        return float(
+            peak_signal_noise_ratio(original, reconstructed, data_range=1.0)
+        )
+
+    @staticmethod
+    def compute_ms_ssim(original: np.ndarray, reconstructed: np.ndarray) -> float:
+        """MS-SSIM via skimage with gaussian weights, sigma=1.5."""
+        return float(structural_similarity(
+            original, reconstructed,
+            data_range=1.0,
+            gaussian_weights=True,
+            sigma=1.5,
+            use_sample_covariance=False,
+            channel_axis=2,
+        ))
+
+    @staticmethod
+    def compute_bpp(size_bytes: int, height: int, width: int) -> float:
+        """Bits per pixel from physical compressed size."""
+        return (size_bytes * 8) / (height * width)
+
+
+# ============================================================================
+# Backward-compatible module-level aliases
+# ============================================================================
+
+compute_psnr = Metrics.compute_psnr
+compute_ms_ssim = Metrics.compute_ms_ssim
+compute_bpp = Metrics.compute_bpp
