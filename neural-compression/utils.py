@@ -17,7 +17,7 @@ from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 # .Ramiro Binary Format
 # ============================================================================
 
-class .RamiroFormat:
+class RamiroFormat:
     """Constants for the .Ramiro binary file format.
 
     Layout: 24-byte header + length-prefixed byte streams.
@@ -32,7 +32,7 @@ class .RamiroFormat:
 
 
 @dataclass(frozen=True)
-class .RamiroHeader:
+class RamiroHeader:
     """Parsed .Ramiro file header — like a C# record for the deserialized header."""
     original_height: int
     original_width: int
@@ -58,23 +58,31 @@ def pack_bitstream(
     Returns:
         Raw bytes: 24-byte header + length-prefixed byte strings.
     """
-    inner = strings[0]
+    # strings is [[y_bytes], [z_bytes]] - flatten to get all streams
+    inner = []
+    for stream_list in strings:
+        inner.extend(stream_list)  # Add each stream's bytes
 
-    header = struct.pack(
-        .RamiroFormat.HEADER_STRUCT,
-        .RamiroFormat.MAGIC, orig_h, orig_w, pad_h, pad_w, len(inner),
+    # Build header manually: 8-byte magic + 5 uint32be integers = 28 bytes
+    header = (
+        b".Ramiro\x00"
+        + struct.pack(">I", orig_h)
+        + struct.pack(">I", orig_w)
+        + struct.pack(">I", pad_h)
+        + struct.pack(">I", pad_w)
+        + struct.pack(">I", len(inner))
     )
 
     # Build payload: [header, len0, data0, len1, data1, ...]
     parts = [header]
     for stream in inner:
-        parts.append(struct.pack(.RamiroFormat.STREAM_LENGTH_STRUCT, len(stream)))
+        parts.append(struct.pack(">I", len(stream)))
         parts.append(stream)
 
     return b"".join(parts)
 
 
-def unpack_bitstream(data: bytes) -> .RamiroHeader:
+def unpack_bitstream(data: bytes) -> RamiroHeader:
     """Deserialize .Ramiro binary format back to components.
 
     Returns:
@@ -83,34 +91,32 @@ def unpack_bitstream(data: bytes) -> .RamiroHeader:
     Raises:
         ValueError: If magic number doesn't match or file is truncated.
     """
-    if len(data) < .RamiroFormat.HEADER_SIZE:
+    if len(data) < 28:
         raise ValueError(
             f"Invalid .Ramiro file: file too short for header "
-            f"(expected >= {.RamiroFormat.HEADER_SIZE} bytes)"
+            f"(expected >= 28 bytes)"
         )
 
-    magic, orig_h, orig_w, pad_h, pad_w, num_streams = struct.unpack(
-        .RamiroFormat.HEADER_STRUCT, data[:.RamiroFormat.HEADER_SIZE]
-    )
-
-    if magic != .RamiroFormat.MAGIC:
+    magic = data[:8]
+    if magic != b".Ramiro\x00":
         raise ValueError(
             f"Invalid .Ramiro file: magic number mismatch "
-            f"(expected {.RamiroFormat.MAGIC!r}, got {magic!r})"
+            f"(expected b'.Ramiro\\x00', got {magic!r})"
         )
 
-    offset = .RamiroFormat.HEADER_SIZE
+    orig_h, orig_w, pad_h, pad_w, num_streams = struct.unpack(
+        ">IIIII", data[8:28]
+    )
+
+    offset = 28
     inner: List[bytes] = []
 
     for _ in range(num_streams):
-        if offset + .RamiroFormat.STREAM_LENGTH_SIZE > len(data):
+        if offset + 4 > len(data):
             raise ValueError("Invalid .Ramiro file: unexpected end of stream data")
 
-        (length,) = struct.unpack(
-            .RamiroFormat.STREAM_LENGTH_STRUCT,
-            data[offset : offset + .RamiroFormat.STREAM_LENGTH_SIZE],
-        )
-        offset += .RamiroFormat.STREAM_LENGTH_SIZE
+        (length,) = struct.unpack(">I", data[offset : offset + 4])
+        offset += 4
 
         if offset + length > len(data):
             raise ValueError("Invalid .Ramiro file: unexpected end of stream data")
@@ -118,12 +124,13 @@ def unpack_bitstream(data: bytes) -> .RamiroHeader:
         inner.append(data[offset : offset + length])
         offset += length
 
-    return .RamiroHeader(
+    # CompressAI decompress expects strings as [y_bytes, z_bytes] (flat list of 2)
+    return RamiroHeader(
         original_height=orig_h,
         original_width=orig_w,
         padded_height=pad_h,
         padded_width=pad_w,
-        strings=[inner],
+        strings=[inner[0], inner[1]] if len(inner) >= 2 else [b'', b''],
     )
 
 
