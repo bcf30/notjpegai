@@ -124,13 +124,13 @@ def unpack_bitstream(data: bytes) -> RamiroHeader:
         inner.append(data[offset : offset + length])
         offset += length
 
-    # CompressAI decompress expects strings as [y_bytes, z_bytes] (flat list of 2)
+    # CompressAI decompress expects [[y_bytes], [z_bytes]] (list of 2 lists, each with bytes)
     return RamiroHeader(
         original_height=orig_h,
         original_width=orig_w,
         padded_height=pad_h,
         padded_width=pad_w,
-        strings=[inner[0], inner[1]] if len(inner) >= 2 else [b'', b''],
+        strings=[[inner[0]], [inner[1]]] if len(inner) >= 2 else [[b''], [b'']],
     )
 
 
