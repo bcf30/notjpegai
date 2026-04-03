@@ -58,3 +58,24 @@ python evaluate.py \
 ```
 
 This produces a rate-distortion plot comparing the neural codec (single data point) against JPEG baselines, along with a CSV of per-codec metrics.
+
+### Structural Evaluation
+
+Evaluate structural distortion using the Learned Geometric Boundary Topology (LGBT) metric, which measures false edges introduced by compression:
+
+```
+python -c "
+from neural_compression.graph_metrics import evaluate_structural_integrity
+from PIL import Image
+
+orig = Image.open('original.png')
+recon = Image.open('reconstructed.png')
+
+result = evaluate_structural_integrity(orig, recon)
+print(f'LGBT: {result[\"lgbt\"]:.4f}')
+print(f'False edges: {result[\"false_edges\"]}')
+print(f'True edges: {result[\"true_edges\"]}')
+"
+```
+
+LGBT ranges from 0.0 (perfect structural preservation) to 1.0 (all edges are false). Lower values indicate the compression did not introduce spurious structural artifacts.
