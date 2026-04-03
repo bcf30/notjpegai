@@ -13,14 +13,14 @@ decompress.py: decompress a `.ramiro` file to a PNG
 evaluate.py: PSNR and MS-SSIM evaluation on image accuracy
 graph_metrics.py: graph-topology based evaluation for image accuracy with focus on ringing artifacts. this is the "Learned Geometric Boundary Topology" tech
 
-# Compress / Decompress — positional args, no flags
+### Compress / Decompress — positional args, no flags
 python compress.py input.jpg output.ramiro checkpoint.pth
 python decompress.py input.ramiro output.png checkpoint.pth
 
-# Evaluate — just two images
+### Evaluate — just two images
 python evaluate.py original.jpg reconstructed.png
 python graph_metrics.py original.jpg reconstructed.png
 
-# Train / Resume — just edit the top of the file and run
+### Train / Resume — just edit the top of the file and run
 python train.py
 python resume_training.py
