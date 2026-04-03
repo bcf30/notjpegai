@@ -1,4 +1,4 @@
-## Not Jpeg Ai... but the idea is close enough
+## Not JPEG AI... but the idea is close enough
 
 A PyTorch-based neural image compression pipeline using the CompressAI Mean-Scale Hyperprior architecture. Uses the cleverly-named binary format (`.ramiro`). Includes a graph-topology-based tool for artifact detection "Learned Geometric Boundary Topology" (LGBT).
 
