@@ -276,7 +276,11 @@ def main() -> None:
         else:
             epochs_without_improvement += 1
             if epochs_without_improvement >= config.early_stop_patience:
-                logger.info(f"Early stopping after {epoch} epochs")
+                logger.info(
+                    f"Early stopping triggered at epoch {epoch} — "
+                    f"no improvement for {config.early_stop_patience} consecutive epochs. "
+                    f"Best val loss was {best_val_loss:.6f}."
+                )
                 break
 
     logger.info("Training complete.")

@@ -45,7 +45,7 @@ class TrainConfig:
     augment: bool = False
 
     # Early stopping patience (epochs without improvement)
-    early_stop_patience: int = 20
+    early_stop_patience: int = 33
 
     # Use OneCycleLR scheduler instead of CosineAnnealingLR
     use_onecycle: bool = False
