@@ -21,6 +21,6 @@ python decompress.py input.ramiro output.png checkpoint.pth
 python evaluate.py original.jpg reconstructed.png
 python graph_metrics.py original.jpg reconstructed.png
 
-## Train / Resume: just edit the top of the file and run
+## Train: just edit the top of the file and run
 python train.py
 python resume_training.py

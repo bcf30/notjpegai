@@ -26,7 +26,7 @@ class PadResult:
 
 
 class NeuralCodec:
-    """Wrapper around CompressAI MeanScaleHyperprior(N=192, M=192).
+    """Wrapper around CompressAI MeanScaleHyperprior(N=128, M=128).
 
     Responsibilities:
         - Model instantiation with optional checkpoint loading
