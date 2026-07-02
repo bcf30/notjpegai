@@ -15,21 +15,12 @@ from skimage.metrics import peak_signal_noise_ratio, structural_similarity
 
 # ============================================================================
 # .Ramiro Binary Format
+#
+# Layout: 36-byte header + length-prefixed byte streams.
+#   header = 8-byte magic (b".Ramiro\x00") + 7 big-endian uint32 fields
+#            (orig_h, orig_w, pad_h, pad_w, latent_h, latent_w, num_streams)
+#   body   = for each stream: uint32 length prefix followed by raw bytes
 # ============================================================================
-
-class RamiroFormat:
-    """Constants for the .Ramiro binary file format.
-
-    Layout: 24-byte header + length-prefixed byte streams.
-    All integers are big-endian unsigned 32-bit.
-    """
-
-    MAGIC: bytes = b".Ramiro\x00"
-    HEADER_STRUCT: str = ">4sIIIII"  # magic + orig_h + orig_w + pad_h + pad_w + num_streams
-    HEADER_SIZE: int = 24
-    STREAM_LENGTH_STRUCT: str = ">I"
-    STREAM_LENGTH_SIZE: int = 4
-
 
 @dataclass(frozen=True)
 class RamiroHeader:
@@ -61,7 +52,7 @@ def pack_bitstream(
         strings: CompressAI output, shape [[bytes_y, bytes_z]] (batch=1).
 
     Returns:
-        Raw bytes: 32-byte header + length-prefixed byte strings.
+        Raw bytes: 36-byte header + length-prefixed byte strings.
     """
     # strings is [[y_bytes], [z_bytes]] - flatten to get all streams
     inner = []

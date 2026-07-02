@@ -29,8 +29,9 @@ class TrainConfig:
     # Maximum training epochs
     max_epochs: int = 100
 
-    # Spatial dimension alignment factor for encoder/decoder
-    # MeanScaleHyperprior has 4 downsampling layers (2^4=16) plus hyperprior needs factor of 2
+    # Spatial padding factor: H/W are padded up to a multiple of this value so
+    # every downsampling stage (encoder + hyperprior) divides evenly. 128 is a
+    # conservative multiple that safely covers all stride-2 stages.
     pad_factor: int = 128
 
     # Maximum gradient norm for main optimizer clipping
