@@ -1,6 +1,6 @@
 # not jpeg ai
 
-A PyTorch-based neural image compression pipeline using CompressAI.
+A PyTorch-based neural image compression pipeline using CompressAI. MeanScaleHyperprior codec.
 
 Default settings are on the safer side as my computer runs an RTX 2060 with 16GB RAM.
 

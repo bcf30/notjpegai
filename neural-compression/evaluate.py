@@ -88,18 +88,16 @@ def evaluate_neural(
             pad_result = codec.pad_image(tensor, config.pad_factor)
             padded = pad_result.tensor
             orig_h, orig_w = pad_result.original_height, pad_result.original_width
-            pad_h, pad_w = padded.shape[2], padded.shape[3]
 
             out = codec.model.compress(padded)
-            
+
             # Compute BPP from compressed strings
             total_bytes = sum(len(s[0]) for s in out["strings"])
             bpps.append(Metrics.compute_bpp(total_bytes, orig_h, orig_w))
 
-            # Decompress - shape is (H, W) of latent z
-            latent_h = pad_h // config.pad_factor // 4  # h_s downsamples by 4
-            latent_w = pad_w // config.pad_factor // 4
-            recon = codec.model.decompress(out["strings"], (latent_h, latent_w))
+            # Decompress using the authoritative latent-z shape returned by
+            # CompressAI (same value compress.py/decompress.py persist and use).
+            recon = codec.model.decompress(out["strings"], out["shape"])
             x_hat = recon["x_hat"].clamp(0, 1)
             x_hat = codec.unpad_image(x_hat, orig_h, orig_w)
 
